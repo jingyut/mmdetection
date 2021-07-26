@@ -21,7 +21,8 @@ class BBoxHead(BaseModule):
                  with_reg=True,
                  roi_feat_size=7,
                  in_channels=256,
-                 num_classes=80,
+                 num_classes=4,
+                 num_classes_cls=56,
                  bbox_coder=dict(
                      type='DeltaXYWHBBoxCoder',
                      clip_border=True,
@@ -47,6 +48,7 @@ class BBoxHead(BaseModule):
         self.roi_feat_area = self.roi_feat_size[0] * self.roi_feat_size[1]
         self.in_channels = in_channels
         self.num_classes = num_classes
+        self.num_classes_cls = num_classes_cls
         self.reg_class_agnostic = reg_class_agnostic
         self.reg_decoded_bbox = reg_decoded_bbox
         self.reg_predictor_cfg = reg_predictor_cfg

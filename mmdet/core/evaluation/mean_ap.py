@@ -252,7 +252,9 @@ def get_cls_results(det_results, annotations, class_id):
     cls_gts = []
     cls_gts_ignore = []
     for ann in annotations:
-        gt_inds = ann['labels'] == class_id
+        #因为labels由长度为2的list组成
+        gt_inds = ann['labels'][:,1] == class_id
+        print("gt_inds:{} / {}".format(gt_inds, class_id))
         cls_gts.append(ann['bboxes'][gt_inds, :])
 
         if ann.get('labels_ignore', None) is not None:

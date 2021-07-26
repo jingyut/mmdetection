@@ -55,9 +55,11 @@ class LoadImageFromFile:
                                 results['img_info']['filename'])
         else:
             filename = results['img_info']['filename']
-
-        img_bytes = self.file_client.get(filename)
-        img = mmcv.imfrombytes(img_bytes, flag=self.color_type)
+        try:
+            img_bytes = self.file_client.get(filename)
+            img = mmcv.imfrombytes(img_bytes, flag=self.color_type)
+        except Exception as e:
+            print("ERROR:",e, "filename: ", filename)
         if self.to_float32:
             img = img.astype(np.float32)
 
@@ -257,7 +259,8 @@ class LoadAnnotations:
             dict: The dict contains loaded label annotations.
         """
 
-        results['gt_labels'] = results['ann_info']['labels'].copy()
+        results['gt_labels_cls'] = results['ann_info']['labels'][:, 0].copy()
+        results['gt_labels'] = results['ann_info']['labels'][:, 1].copy()
         return results
 
     def _poly2mask(self, mask_ann, img_h, img_w):
@@ -317,7 +320,7 @@ class LoadAnnotations:
         """
 
         h, w = results['img_info']['height'], results['img_info']['width']
-        gt_masks = results['ann_info']['masks']
+        gt_masks = results['ann_info']['polys']
         if self.poly2mask:
             gt_masks = BitmapMasks(
                 [self._poly2mask(mask, h, w) for mask in gt_masks], h, w)
@@ -451,7 +454,7 @@ class FilterAnnotations:
         if not keep.any():
             return None
         else:
-            keys = ('gt_bboxes', 'gt_labels', 'gt_masks', 'gt_semantic_seg')
+            keys = ('gt_bboxes', 'gt_labels', 'gt_labels_cls','gt_masks', 'gt_semantic_seg')
             for key in keys:
                 if key in results:
                     results[key] = results[key][keep]

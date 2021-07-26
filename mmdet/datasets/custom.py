@@ -51,7 +51,8 @@ class CustomDataset(Dataset):
             during tests.
     """
 
-    CLASSES = None
+    CLASSES = ('blur', 'bclur', 'clear', 'cclear')
+    LABELS = [1001,1002,1003,1004]
 
     def __init__(self,
                  ann_file,
@@ -108,9 +109,27 @@ class CustomDataset(Dataset):
         """Total number of samples of data."""
         return len(self.data_infos)
 
+
     def load_annotations(self, ann_file):
         """Load annotation from annotation file."""
-        return mmcv.load(ann_file)
+        data_infos = mmcv.load(ann_file)
+        blur2label = {k:i for i,k in enumerate(CustomDataset.LABELS)}
+        for data_dic in data_infos:
+
+            polys = data_dic['ann']['polys']
+            cls = data_dic['ann']['cls']#str
+            data_dic['ann']['bboxes'] = np.array(data_dic['ann']['bboxes']).astype(np.float32)#<np.ndarray, float32> (n, 4),
+            data_dic['ann']['labels'] = np.array(data_dic['ann']['labels']).astype(np.int64)#<np.ndarray, int64> (n, 2),
+            #data_dic['ann']['polys'] = np.array(polys).astype(np.float32)#<np.ndarray, float32> (n, 8)
+            data_dic['ann']['labels'][:,1] = [blur2label[label] for label in data_dic['ann']['labels'][:,1]]
+            data_dic['ann']['labels'][:,0] = [55 if label==100 else label for label in data_dic['ann']['labels'][:,0]]
+            # labels = data_dic['ann']['labels']
+            # print("labels: ",labels[:,1], "labelscls: ", labels[:,0])
+            for bbox in data_dic['ann']['bboxes']:
+                bbox[3]+=bbox[1]
+                bbox[2]+=bbox[0]
+
+        return data_infos
 
     def load_proposals(self, proposal_file):
         """Load proposal from proposal file."""
@@ -214,6 +233,7 @@ class CustomDataset(Dataset):
         if self.proposals is not None:
             results['proposals'] = self.proposals[idx]
         self.pre_pipeline(results)
+        # 调用pipeline里的loading，transform等功能，返回results
         return self.pipeline(results)
 
     def prepare_test_img(self, idx):
@@ -285,42 +305,43 @@ class CustomDataset(Dataset):
             scale_ranges (list[tuple] | None): Scale ranges for evaluating mAP.
                 Default: None.
         """
-
-        if not isinstance(metric, str):
-            assert len(metric) == 1
-            metric = metric[0]
-        allowed_metrics = ['mAP', 'recall']
-        if metric not in allowed_metrics:
-            raise KeyError(f'metric {metric} is not supported')
-        annotations = [self.get_ann_info(i) for i in range(len(self))]
         eval_results = OrderedDict()
+        annotations = [self.get_ann_info(i) for i in range(len(self))]
         iou_thrs = [iou_thr] if isinstance(iou_thr, float) else iou_thr
-        if metric == 'mAP':
-            assert isinstance(iou_thrs, list)
-            mean_aps = []
-            for iou_thr in iou_thrs:
-                print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
-                mean_ap, _ = eval_map(
-                    results,
-                    annotations,
-                    scale_ranges=scale_ranges,
-                    iou_thr=iou_thr,
-                    dataset=self.CLASSES,
-                    logger=logger)
-                mean_aps.append(mean_ap)
-                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
-            eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
-        elif metric == 'recall':
-            gt_bboxes = [ann['bboxes'] for ann in annotations]
-            recalls = eval_recalls(
-                gt_bboxes, results, proposal_nums, iou_thr, logger=logger)
-            for i, num in enumerate(proposal_nums):
-                for j, iou in enumerate(iou_thrs):
-                    eval_results[f'recall@{num}@{iou}'] = recalls[i, j]
-            if recalls.shape[1] > 1:
-                ar = recalls.mean(axis=1)
+        for metri in metric:
+            # if not isinstance(metri, str):
+            #     assert len(metric) == 1
+            #     metri = metri[0]
+            allowed_metrics = ['mAP', 'recall']
+            if metri not in allowed_metrics:
+                raise KeyError(f'metric {metric} is not supported')
+            
+            if metri == 'mAP':
+                assert isinstance(iou_thrs, list)
+                mean_aps = []
+                for iou_thr in iou_thrs:
+                    print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
+                    mean_ap, _ = eval_map(
+                        results,
+                        annotations,
+                        scale_ranges=scale_ranges,
+                        iou_thr=iou_thr,
+                        dataset=self.CLASSES,
+                        logger=logger)
+                    mean_aps.append(mean_ap)
+                    eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
+                eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
+            elif metri == 'recall':
+                gt_bboxes = [ann['bboxes'] for ann in annotations]
+                recalls = eval_recalls(
+                    gt_bboxes, results, proposal_nums, iou_thr, logger=logger)
                 for i, num in enumerate(proposal_nums):
-                    eval_results[f'AR@{num}'] = ar[i]
+                    for j, iou in enumerate(iou_thrs):
+                        eval_results[f'recall@{num}@{iou}'] = recalls[i, j]
+                if recalls.shape[1] > 1:
+                    ar = recalls.mean(axis=1)
+                    for i, num in enumerate(proposal_nums):
+                        eval_results[f'AR@{num}'] = ar[i]
         return eval_results
 
     def __repr__(self):
